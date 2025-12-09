@@ -162,11 +162,23 @@ configure_moodle() {
     
     cp /tmp/config.php.template /var/www/html/config.php
     
-    sed -i "s|%%MYSQL_HOST%%|${db_host}|g" /var/www/html/config.php
-    sed -i "s|%%MYSQL_DATABASE%%|${MYSQL_DATABASE}|g" /var/www/html/config.php
-    sed -i "s|%%MYSQL_USER%%|${MYSQL_USER}|g" /var/www/html/config.php
-    sed -i "s|%%MYSQL_PASSWORD%%|${MYSQL_PASSWORD}|g" /var/www/html/config.php
-    sed -i "s|%%WWWROOT%%|${WWWROOT}|g" /var/www/html/config.php
+    # Escape special characters for sed replacement
+    # & is special in sed (means "matched string"), \ and | also need escaping
+    escape_for_sed() {
+        printf '%s' "$1" | sed 's/[&/\]/\\&/g'
+    }
+    
+    local escaped_password=$(escape_for_sed "${MYSQL_PASSWORD}")
+    local escaped_db_host=$(escape_for_sed "${db_host}")
+    local escaped_db_name=$(escape_for_sed "${MYSQL_DATABASE}")
+    local escaped_db_user=$(escape_for_sed "${MYSQL_USER}")
+    local escaped_wwwroot=$(escape_for_sed "${WWWROOT}")
+    
+    sed -i "s|%%MYSQL_HOST%%|${escaped_db_host}|g" /var/www/html/config.php
+    sed -i "s|%%MYSQL_DATABASE%%|${escaped_db_name}|g" /var/www/html/config.php
+    sed -i "s|%%MYSQL_USER%%|${escaped_db_user}|g" /var/www/html/config.php
+    sed -i "s|%%MYSQL_PASSWORD%%|${escaped_password}|g" /var/www/html/config.php
+    sed -i "s|%%WWWROOT%%|${escaped_wwwroot}|g" /var/www/html/config.php
     sed -i "s|%%SSLPROXY%%|${SSLPROXY}|g" /var/www/html/config.php
     
     chown moodle:moodle /var/www/html/config.php
