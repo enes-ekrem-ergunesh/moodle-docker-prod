@@ -22,11 +22,31 @@ log_error() {
 # Wait for MySQL to be ready
 wait_for_mysql() {
     log_info "Waiting for MySQL to be ready..."
-    while ! php -r "new mysqli('db', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');" 2>/dev/null; do
-        log_info "MySQL is not ready yet. Waiting..."
+    local max_attempts=60
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        if php -r "
+            \$conn = @new mysqli('db', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');
+            if (\$conn->connect_error) {
+                exit(1);
+            }
+            \$conn->close();
+            exit(0);
+        " 2>/dev/null; then
+            log_info "MySQL is ready!"
+            # Additional wait to ensure MySQL is fully stable
+            sleep 5
+            return 0
+        fi
+        
+        log_info "MySQL is not ready yet. Attempt $attempt/$max_attempts. Waiting..."
         sleep 5
+        attempt=$((attempt + 1))
     done
-    log_info "MySQL is ready!"
+    
+    log_error "MySQL did not become ready in time!"
+    return 1
 }
 
 # Get the correct Moodle git branch based on version
