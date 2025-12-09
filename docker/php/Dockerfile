@@ -44,8 +44,6 @@ RUN apk add --no-cache \
     libxml2-dev \
     # For opcache
     linux-headers \
-    # For exif
-    exif \
     # For cron
     busybox-suid \
     # For image processing
