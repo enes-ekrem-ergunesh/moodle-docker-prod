@@ -4,6 +4,8 @@ services:
     image: mysql:8.0
     container_name: moodle_db
     restart: unless-stopped
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -37,6 +39,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
       ENABLE_SSL: ${ENABLE_SSL:-true}
+      MYSQL_HOST: db
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
@@ -55,37 +58,21 @@ services:
       db:
         condition: service_healthy
 
-  # Nginx Web Server
+  # Nginx Web Server (internal, exposed to host nginx via port)
   nginx:
     image: nginx:alpine
     container_name: moodle_nginx
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      DOMAIN: ${DOMAIN}
+      - "${MOODLE_PORT:-8080}:80"
     volumes:
       - moodle_data:/var/www/html:ro
       - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
-      - certbot_conf:/etc/letsencrypt:ro
-      - certbot_www:/var/www/certbot:ro
     networks:
       - moodle_network
     depends_on:
       - moodle
-
-  # Certbot for SSL
-  certbot:
-    image: certbot/certbot
-    container_name: moodle_certbot
-    volumes:
-      - certbot_conf:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-    networks:
-      - moodle_network
 
   # Cron for Moodle scheduled tasks
   cron:
@@ -104,6 +91,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
       ENABLE_SSL: ${ENABLE_SSL:-true}
+      MYSQL_HOST: db
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
@@ -121,8 +109,6 @@ volumes:
   mysql_data:
   moodle_data:
   moodledata:
-  certbot_conf:
-  certbot_www:
 
 networks:
   moodle_network:

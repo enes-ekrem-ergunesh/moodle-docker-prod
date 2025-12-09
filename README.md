@@ -1,24 +1,35 @@
 # Moodle Docker Setup
 
-A complete Docker-based installation of Moodle with Nginx, PHP-FPM, MySQL, and automatic SSL via Certbot.
+A complete Docker-based installation of Moodle with Nginx, PHP-FPM, and MySQL. SSL is managed by the host server's nginx with Certbot.
 
 ## Features
 
 - 🎓 **Moodle LMS** - Support for versions 4.0, 4.1, 4.2, 4.3, 4.4, 4.5, and 5.0+
-- 🌐 **Nginx** - High-performance web server with optimized configuration
+- 🌐 **Nginx** - Internal container nginx proxied by host nginx
 - 🐘 **PHP-FPM** - PHP 8.1 with all required Moodle extensions
-- 🗄️ **MySQL 8.0** - Database with optimized settings
-- 🔒 **Let's Encrypt SSL** - Automatic HTTPS with Certbot
+- 🗄️ **MySQL 8.0** - Database with optimized settings (port exposed for debugging)
+- 🔒 **SSL via Host Nginx** - Automatic HTTPS with Certbot on host server
 - ⏰ **Cron** - Automated scheduled tasks
 - 🐳 **Docker Compose** - Easy orchestration
+
+## Architecture
+
+```
+Internet → Host Nginx (SSL/443) → Docker Nginx (8080) → PHP-FPM → MySQL
+```
+
+- SSL termination happens at the host nginx level
+- Docker containers expose Moodle on a configurable port (default: 8080)
+- MySQL is exposed for debugging (default: 3306)
 
 ## Quick Start
 
 ### 1. Clone and Configure
 
 ```bash
-# Clone the repository (or copy the files)
-cd omar-moodle-docker
+# Clone the repository
+git clone <repo-url>
+cd moodle-docker-prod
 
 # Copy the example environment file
 cp .env.example .env
@@ -41,11 +52,14 @@ DOMAIN=moodle.yourdomain.com
 # Email for SSL certificate
 CERTBOT_EMAIL=your@email.com
 
+# Port where Moodle will be exposed
+MOODLE_PORT=8080
+
 # Database passwords (change these!)
 MYSQL_ROOT_PASSWORD=your_secure_root_password
 MYSQL_PASSWORD=your_secure_moodle_password
 
-# Moodle admin password
+# Moodle admin password (min 8 chars, upper, lower, number, special char)
 MOODLE_ADMIN_PASSWORD=YourSecure123!
 ```
 
@@ -53,31 +67,20 @@ MOODLE_ADMIN_PASSWORD=YourSecure123!
 
 ```bash
 # Make scripts executable
-chmod +x scripts/*.sh
+chmod +x scripts/*.sh docker/php/scripts/*.sh
 
-# Run the setup script
+# Run the Docker setup script
 ./scripts/setup.sh
-```
 
-Or manually:
-
-```bash
-# Build containers
-docker compose build
-
-# Initialize SSL (for production with real domain)
-./scripts/init-ssl.sh
-
-# Start all services
-docker compose up -d
+# Set up host nginx with SSL (requires sudo)
+sudo ./scripts/setup-host-nginx.sh
 ```
 
 ### 4. Access Moodle
 
 Wait a few minutes for the initial installation to complete, then access:
 
-- **With SSL:** `https://your-domain.com`
-- **Without SSL:** `http://your-domain.com`
+`https://your-domain.com`
 
 ## Configuration Options
 
@@ -88,7 +91,9 @@ Wait a few minutes for the initial installation to complete, then access:
 | `MOODLE_VERSION` | Moodle version to install | `4.5` |
 | `DOMAIN` | Your domain name | (required) |
 | `CERTBOT_EMAIL` | Email for Let's Encrypt | (required) |
-| `ENABLE_SSL` | Enable HTTPS | `true` |
+| `MOODLE_PORT` | Port to expose Moodle | `8080` |
+| `MYSQL_PORT` | Port to expose MySQL | `3306` |
+| `ENABLE_SSL` | Use https in Moodle URLs | `true` |
 | `MYSQL_ROOT_PASSWORD` | MySQL root password | (required) |
 | `MYSQL_DATABASE` | Database name | `moodle` |
 | `MYSQL_USER` | Database user | `moodleuser` |
@@ -122,11 +127,7 @@ For local development without SSL:
 
 1. Set `ENABLE_SSL=false` in `.env`
 2. Set `DOMAIN=localhost` or your local domain
-3. Replace nginx config:
-   ```bash
-   cp config/nginx/conf.d/default-nossl.conf.example config/nginx/conf.d/default.conf
-   ```
-4. Run `docker compose up -d`
+3. Access directly via `http://localhost:8080`
 
 ## Common Commands
 
@@ -156,6 +157,9 @@ docker compose exec moodle bash
 
 # Access MySQL
 docker compose exec db mysql -u root -p
+
+# Connect to MySQL from host
+mysql -h 127.0.0.1 -P 3306 -u moodleuser -p
 ```
 
 ## Upgrading Moodle
@@ -183,7 +187,7 @@ docker compose exec db mysqldump -u root -p moodle > backup.sql
 ### Moodle Data Backup
 
 ```bash
-docker run --rm -v omar-moodle-docker_moodledata:/data -v $(pwd):/backup alpine tar czf /backup/moodledata.tar.gz -C /data .
+docker run --rm -v moodle-docker-prod_moodledata:/data -v $(pwd):/backup alpine tar czf /backup/moodledata.tar.gz -C /data .
 ```
 
 ## Directory Structure
@@ -198,8 +202,7 @@ docker run --rm -v omar-moodle-docker_moodledata:/data -v $(pwd):/backup alpine 
 │   └── nginx/
 │       ├── nginx.conf    # Main Nginx configuration
 │       └── conf.d/
-│           ├── default.conf              # HTTPS configuration
-│           └── default-nossl.conf.example # HTTP-only (dev)
+│           └── default.conf  # Internal nginx config
 ├── docker/
 │   └── php/
 │       ├── Dockerfile    # PHP-FPM image with Moodle
@@ -209,8 +212,8 @@ docker run --rm -v omar-moodle-docker_moodledata:/data -v $(pwd):/backup alpine 
 │           ├── entrypoint.sh       # Container entrypoint
 │           └── cron-entrypoint.sh  # Cron container entrypoint
 └── scripts/
-    ├── setup.sh          # Main setup script
-    └── init-ssl.sh       # SSL initialization script
+    ├── setup.sh              # Docker setup script
+    └── setup-host-nginx.sh   # Host nginx + SSL setup script
 ```
 
 ## Troubleshooting
@@ -230,13 +233,18 @@ docker compose ps
 docker compose logs db
 ```
 
+Test MySQL connection from host:
+```bash
+mysql -h 127.0.0.1 -P 3306 -u moodleuser -p
+```
+
 ### SSL certificate issues
 
 1. Ensure your domain points to your server
 2. Ensure ports 80 and 443 are open
-3. Re-run SSL initialization:
+3. Re-run host nginx setup:
    ```bash
-   ./scripts/init-ssl.sh
+   sudo ./scripts/setup-host-nginx.sh
    ```
 
 ### Permission issues

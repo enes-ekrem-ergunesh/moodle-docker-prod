@@ -7,7 +7,7 @@ $CFG = new stdClass();
 // Database settings
 $CFG->dbtype    = 'mysqli';
 $CFG->dblibrary = 'native';
-$CFG->dbhost    = 'db';
+$CFG->dbhost    = '%%MYSQL_HOST%%';
 $CFG->dbname    = '%%MYSQL_DATABASE%%';
 $CFG->dbuser    = '%%MYSQL_USER%%';
 $CFG->dbpass    = '%%MYSQL_PASSWORD%%';

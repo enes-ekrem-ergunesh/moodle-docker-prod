@@ -24,10 +24,11 @@ wait_for_mysql() {
     log_info "Waiting for MySQL to be ready..."
     local max_attempts=60
     local attempt=1
+    local db_host="${MYSQL_HOST:-db}"
     
     while [ $attempt -le $max_attempts ]; do
         if php -r "
-            \$conn = @new mysqli('db', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');
+            \$conn = @new mysqli('${db_host}', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');
             if (\$conn->connect_error) {
                 exit(1);
             }
@@ -114,6 +115,8 @@ configure_moodle() {
     
     log_info "Configuring Moodle..."
     
+    local db_host="${MYSQL_HOST:-db}"
+    
     # Determine wwwroot based on SSL setting
     if [ "${ENABLE_SSL}" = "true" ]; then
         WWWROOT="https://${DOMAIN}"
@@ -126,6 +129,7 @@ configure_moodle() {
     # Copy and configure config.php
     cp /tmp/config.php.template /var/www/html/config.php
     
+    sed -i "s|%%MYSQL_HOST%%|${db_host}|g" /var/www/html/config.php
     sed -i "s|%%MYSQL_DATABASE%%|${MYSQL_DATABASE}|g" /var/www/html/config.php
     sed -i "s|%%MYSQL_USER%%|${MYSQL_USER}|g" /var/www/html/config.php
     sed -i "s|%%MYSQL_PASSWORD%%|${MYSQL_PASSWORD}|g" /var/www/html/config.php
@@ -140,9 +144,11 @@ configure_moodle() {
 
 # Install Moodle via CLI
 install_moodle() {
+    local db_host="${MYSQL_HOST:-db}"
+    
     # Check if Moodle is already installed by checking for existing tables
     if php -r "
-        \$conn = new mysqli('db', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');
+        \$conn = new mysqli('${db_host}', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');
         \$result = \$conn->query('SHOW TABLES LIKE \"mdl_config\"');
         exit(\$result->num_rows > 0 ? 0 : 1);
     " 2>/dev/null; then
@@ -166,7 +172,7 @@ install_moodle() {
         --wwwroot="${WWWROOT}" \
         --dataroot=/var/www/moodledata \
         --dbtype=mysqli \
-        --dbhost=db \
+        --dbhost="${db_host}" \
         --dbname="${MYSQL_DATABASE}" \
         --dbuser="${MYSQL_USER}" \
         --dbpass="${MYSQL_PASSWORD}" \

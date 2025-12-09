@@ -39,6 +39,7 @@ if [ ! -f .env ]; then
     echo "  - MOODLE_VERSION"
     echo "  - DOMAIN"
     echo "  - CERTBOT_EMAIL"
+    echo "  - MOODLE_PORT"
     echo "  - MYSQL_ROOT_PASSWORD"
     echo "  - MYSQL_PASSWORD"
     echo "  - MOODLE_ADMIN_PASSWORD"
@@ -67,6 +68,8 @@ fi
 log_info "Configuration validated!"
 log_info "  Moodle Version: $MOODLE_VERSION"
 log_info "  Domain: $DOMAIN"
+log_info "  Moodle Port: ${MOODLE_PORT:-8080}"
+log_info "  MySQL Port: ${MYSQL_PORT:-3306}"
 log_info "  SSL Enabled: ${ENABLE_SSL:-true}"
 
 echo ""
@@ -75,28 +78,19 @@ log_step "Building Docker images..."
 docker compose build
 
 echo ""
-if [ "${ENABLE_SSL:-true}" = "true" ]; then
-    log_step "Setting up SSL certificates..."
-    ./scripts/init-ssl.sh
-fi
-
-echo ""
 log_step "Starting all services..."
 
 docker compose up -d
 
 echo ""
 log_info "=========================================="
-log_info "     Moodle Setup Complete!"
+log_info "     Moodle Docker Setup Complete!"
 log_info "=========================================="
 echo ""
-
-if [ "${ENABLE_SSL:-true}" = "true" ]; then
-    log_info "Your Moodle site will be available at: https://$DOMAIN"
-else
-    log_info "Your Moodle site will be available at: http://$DOMAIN"
-fi
-
+log_info "Moodle container is running on port: ${MOODLE_PORT:-8080}"
+echo ""
+log_info "NEXT STEP: Set up host nginx with SSL by running:"
+log_info "  sudo ./scripts/setup-host-nginx.sh"
 echo ""
 log_info "Note: Initial setup may take several minutes as Moodle downloads and installs."
 log_info "You can check the progress with: docker compose logs -f moodle"
