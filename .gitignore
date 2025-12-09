@@ -1,0 +1,27 @@
+# Environment
+.env
+
+# Data volumes (if using bind mounts)
+data/
+
+# Certbot certificates
+certbot/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.sql
+*.tar.gz
+*.bak

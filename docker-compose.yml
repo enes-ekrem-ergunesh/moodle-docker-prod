@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: moodle_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./config/mysql/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+    networks:
+      - moodle_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # PHP-FPM with Moodle
+  moodle:
+    build:
+      context: ./docker/php
+      args:
+        MOODLE_VERSION: ${MOODLE_VERSION:-4.5}
+        PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
+        PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE:-256M}
+        PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-256M}
+        PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
+        TIMEZONE: ${TIMEZONE:-UTC}
+    container_name: moodle_app
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+      ENABLE_SSL: ${ENABLE_SSL:-true}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MOODLE_ADMIN_USER: ${MOODLE_ADMIN_USER:-admin}
+      MOODLE_ADMIN_PASSWORD: ${MOODLE_ADMIN_PASSWORD}
+      MOODLE_ADMIN_EMAIL: ${MOODLE_ADMIN_EMAIL}
+      MOODLE_SITE_FULLNAME: ${MOODLE_SITE_FULLNAME:-My Moodle Site}
+      MOODLE_SITE_SHORTNAME: ${MOODLE_SITE_SHORTNAME:-Moodle}
+      TIMEZONE: ${TIMEZONE:-UTC}
+    volumes:
+      - moodle_data:/var/www/html
+      - moodledata:/var/www/moodledata
+    networks:
+      - moodle_network
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Nginx Web Server
+  nginx:
+    image: nginx:alpine
+    container_name: moodle_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - moodle_data:/var/www/html:ro
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    networks:
+      - moodle_network
+    depends_on:
+      - moodle
+
+  # Certbot for SSL
+  certbot:
+    image: certbot/certbot
+    container_name: moodle_certbot
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - moodle_network
+
+  # Cron for Moodle scheduled tasks
+  cron:
+    build:
+      context: ./docker/php
+      args:
+        MOODLE_VERSION: ${MOODLE_VERSION:-4.5}
+        PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
+        PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE:-256M}
+        PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-256M}
+        PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
+        TIMEZONE: ${TIMEZONE:-UTC}
+    container_name: moodle_cron
+    restart: unless-stopped
+    entrypoint: /usr/local/bin/cron-entrypoint.sh
+    environment:
+      DOMAIN: ${DOMAIN}
+      ENABLE_SSL: ${ENABLE_SSL:-true}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TIMEZONE: ${TIMEZONE:-UTC}
+    volumes:
+      - moodle_data:/var/www/html
+      - moodledata:/var/www/moodledata
+    networks:
+      - moodle_network
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  moodle_data:
+  moodledata:
+  certbot_conf:
+  certbot_www:
+
+networks:
+  moodle_network:
+    driver: bridge

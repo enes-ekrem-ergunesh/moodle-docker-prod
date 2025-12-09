@@ -1,0 +1,63 @@
+<?php  // Moodle configuration file
+
+unset($CFG);
+global $CFG;
+$CFG = new stdClass();
+
+// Database settings
+$CFG->dbtype    = 'mysqli';
+$CFG->dblibrary = 'native';
+$CFG->dbhost    = 'db';
+$CFG->dbname    = '%%MYSQL_DATABASE%%';
+$CFG->dbuser    = '%%MYSQL_USER%%';
+$CFG->dbpass    = '%%MYSQL_PASSWORD%%';
+$CFG->prefix    = 'mdl_';
+$CFG->dboptions = array (
+  'dbpersist' => 0,
+  'dbport' => 3306,
+  'dbsocket' => '',
+  'dbcollation' => 'utf8mb4_unicode_ci',
+);
+
+// Site URL
+$CFG->wwwroot   = '%%WWWROOT%%';
+$CFG->dataroot  = '/var/www/moodledata';
+$CFG->admin     = 'admin';
+
+$CFG->directorypermissions = 02777;
+
+// Session handling
+$CFG->session_handler_class = '\core\session\database';
+$CFG->session_database_acquire_lock_timeout = 120;
+
+// Reverse proxy settings (important for Docker/nginx setup)
+$CFG->reverseproxy = true;
+$CFG->sslproxy = %%SSLPROXY%%;
+
+// Performance settings
+$CFG->cachejs = true;
+$CFG->langstringcache = true;
+$CFG->localcachedir = '/var/www/moodledata/localcache';
+
+// Cron settings
+$CFG->cronclionly = true;
+$CFG->cronremotepassword = '';
+
+// Security
+$CFG->passwordpolicy = true;
+$CFG->minpasswordlength = 8;
+$CFG->minpassworddigits = 1;
+$CFG->minpasswordlower = 1;
+$CFG->minpasswordupper = 1;
+$CFG->minpasswordnonalphanum = 1;
+
+// Other settings
+$CFG->pathtogs = '/usr/bin/gs';
+$CFG->pathtodu = '/usr/bin/du';
+$CFG->aspellpath = '/usr/bin/aspell';
+$CFG->pathtodot = '/usr/bin/dot';
+
+require_once(__DIR__ . '/lib/setup.php');
+
+// There is no php closing tag in this file,
+// it is intentional because it prevents trailing whitespace problems!
