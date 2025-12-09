@@ -63,24 +63,62 @@ MYSQL_PASSWORD=your_secure_moodle_password
 MOODLE_ADMIN_PASSWORD=YourSecure123!
 ```
 
-### 3. Run Setup
+### 3. Make Scripts Executable
 
 ```bash
-# Make scripts executable
 chmod +x scripts/*.sh docker/php/scripts/*.sh
-
-# Run the Docker setup script
-./scripts/setup.sh
-
-# Set up host nginx with SSL (requires sudo)
-sudo ./scripts/setup-host-nginx.sh
 ```
 
-### 4. Access Moodle
+### 4. Start Docker Containers
 
-Wait a few minutes for the initial installation to complete, then access:
+```bash
+./scripts/setup.sh
+```
+
+Or manually:
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+### 5. Set Up Host Nginx with SSL (Two-Step Process)
+
+#### Step 1: Create Nginx Server Block and SSL Certificate
+
+```bash
+sudo ./scripts/01-setup-nginx-ssl.sh
+```
+
+**Important UFW Firewall Note:**
+- This script temporarily disables UFW firewall for Certbot to work
+- At the end, it re-enables UFW and you will see this prompt:
+  ```
+  Command may disrupt existing ssh connections. Proceed with operation (y|n)?
+  ```
+- **Type `y` and press `Enter`** to continue
+- Your SSH connection will NOT be disrupted if UFW was properly configured before
+
+#### Step 2: Configure Nginx as Reverse Proxy
+
+After Step 1 completes successfully:
+
+```bash
+sudo ./scripts/02-configure-nginx-proxy.sh
+```
+
+This updates the nginx configuration to proxy requests to your Moodle Docker container.
+
+### 6. Access Moodle
+
+Wait a few minutes for the initial Moodle installation to complete, then access:
 
 `https://your-domain.com`
+
+Check installation progress with:
+```bash
+docker compose logs -f moodle
+```
 
 ## Configuration Options
 
@@ -128,6 +166,7 @@ For local development without SSL:
 1. Set `ENABLE_SSL=false` in `.env`
 2. Set `DOMAIN=localhost` or your local domain
 3. Access directly via `http://localhost:8080`
+4. Skip the nginx setup scripts
 
 ## Common Commands
 
@@ -212,8 +251,9 @@ docker run --rm -v moodle-docker-prod_moodledata:/data -v $(pwd):/backup alpine 
 │           ├── entrypoint.sh       # Container entrypoint
 │           └── cron-entrypoint.sh  # Cron container entrypoint
 └── scripts/
-    ├── setup.sh              # Docker setup script
-    └── setup-host-nginx.sh   # Host nginx + SSL setup script
+    ├── setup.sh                    # Docker setup script
+    ├── 01-setup-nginx-ssl.sh       # Step 1: Create nginx block + SSL
+    └── 02-configure-nginx-proxy.sh # Step 2: Configure reverse proxy
 ```
 
 ## Troubleshooting
@@ -242,10 +282,18 @@ mysql -h 127.0.0.1 -P 3306 -u moodleuser -p
 
 1. Ensure your domain points to your server
 2. Ensure ports 80 and 443 are open
-3. Re-run host nginx setup:
+3. Re-run nginx setup:
    ```bash
-   sudo ./scripts/setup-host-nginx.sh
+   sudo ./scripts/01-setup-nginx-ssl.sh
+   sudo ./scripts/02-configure-nginx-proxy.sh
    ```
+
+### UFW Firewall Issues
+
+If you accidentally blocked yourself out via UFW:
+- Access your server via console (not SSH)
+- Run: `sudo ufw allow ssh` or `sudo ufw allow 22`
+- Then: `sudo ufw enable`
 
 ### Permission issues
 
