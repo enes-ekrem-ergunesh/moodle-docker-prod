@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# NOTE: No 'set -e' - we want the container to stay running even on errors
 
 # Colors for output
 RED='\033[0;31m'
@@ -19,6 +19,9 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Flag to track if setup completed successfully
+SETUP_FAILED=false
+
 # Wait for MySQL to be ready
 wait_for_mysql() {
     log_info "Waiting for MySQL to be ready..."
@@ -26,27 +29,38 @@ wait_for_mysql() {
     local attempt=1
     local db_host="${MYSQL_HOST:-db}"
     
+    log_info "Database host: ${db_host}"
+    log_info "Database name: ${MYSQL_DATABASE}"
+    log_info "Database user: ${MYSQL_USER}"
+    
     while [ $attempt -le $max_attempts ]; do
-        if php -r "
+        # Try to connect and get detailed error
+        local result=$(php -r "
             \$conn = @new mysqli('${db_host}', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');
             if (\$conn->connect_error) {
+                echo 'ERROR: ' . \$conn->connect_error;
                 exit(1);
             }
+            echo 'SUCCESS';
             \$conn->close();
             exit(0);
-        " 2>/dev/null; then
+        " 2>&1)
+        
+        if [ $? -eq 0 ]; then
             log_info "MySQL is ready!"
             # Additional wait to ensure MySQL is fully stable
             sleep 5
             return 0
         fi
         
-        log_info "MySQL is not ready yet. Attempt $attempt/$max_attempts. Waiting..."
+        log_info "MySQL not ready (attempt $attempt/$max_attempts): $result"
         sleep 5
         attempt=$((attempt + 1))
     done
     
     log_error "MySQL did not become ready in time!"
+    log_error "Last error: $result"
+    SETUP_FAILED=true
     return 1
 }
 
@@ -88,7 +102,7 @@ get_moodle_branch() {
 download_moodle() {
     if [ -f /var/www/html/version.php ]; then
         log_info "Moodle already downloaded. Skipping..."
-        return
+        return 0
     fi
     
     local branch=$(get_moodle_branch "${MOODLE_VERSION}")
@@ -97,20 +111,26 @@ download_moodle() {
     cd /var/www/html
     
     # Clone Moodle from GitHub
-    git clone --depth 1 --branch ${branch} https://github.com/moodle/moodle.git .
+    if ! git clone --depth 1 --branch ${branch} https://github.com/moodle/moodle.git .; then
+        log_error "Failed to download Moodle!"
+        SETUP_FAILED=true
+        return 1
+    fi
     
     # Set proper permissions
     chown -R moodle:moodle /var/www/html
     chmod -R 755 /var/www/html
     
     log_info "Moodle downloaded successfully!"
+    return 0
 }
 
 # Configure Moodle
 configure_moodle() {
     if [ -f /var/www/html/config.php ]; then
         log_info "Moodle config already exists. Skipping configuration..."
-        return
+        log_info "To regenerate config, delete /var/www/html/config.php and restart"
+        return 0
     fi
     
     log_info "Configuring Moodle..."
@@ -126,7 +146,20 @@ configure_moodle() {
         SSLPROXY="false"
     fi
     
+    log_info "Config values:"
+    log_info "  DB Host: ${db_host}"
+    log_info "  DB Name: ${MYSQL_DATABASE}"
+    log_info "  DB User: ${MYSQL_USER}"
+    log_info "  WWW Root: ${WWWROOT}"
+    log_info "  SSL Proxy: ${SSLPROXY}"
+    
     # Copy and configure config.php
+    if [ ! -f /tmp/config.php.template ]; then
+        log_error "Config template not found at /tmp/config.php.template!"
+        SETUP_FAILED=true
+        return 1
+    fi
+    
     cp /tmp/config.php.template /var/www/html/config.php
     
     sed -i "s|%%MYSQL_HOST%%|${db_host}|g" /var/www/html/config.php
@@ -140,6 +173,7 @@ configure_moodle() {
     chmod 644 /var/www/html/config.php
     
     log_info "Moodle configuration complete!"
+    return 0
 }
 
 # Install Moodle via CLI
@@ -147,13 +181,35 @@ install_moodle() {
     local db_host="${MYSQL_HOST:-db}"
     
     # Check if Moodle is already installed by checking for existing tables
-    if php -r "
-        \$conn = new mysqli('${db_host}', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');
+    local check_result=$(php -r "
+        \$conn = @new mysqli('${db_host}', '${MYSQL_USER}', '${MYSQL_PASSWORD}', '${MYSQL_DATABASE}');
+        if (\$conn->connect_error) {
+            echo 'CONNECTION_ERROR: ' . \$conn->connect_error;
+            exit(2);
+        }
         \$result = \$conn->query('SHOW TABLES LIKE \"mdl_config\"');
-        exit(\$result->num_rows > 0 ? 0 : 1);
-    " 2>/dev/null; then
+        if (\$result === false) {
+            echo 'QUERY_ERROR: ' . \$conn->error;
+            exit(2);
+        }
+        if (\$result->num_rows > 0) {
+            echo 'INSTALLED';
+            exit(0);
+        }
+        echo 'NOT_INSTALLED';
+        exit(1);
+    " 2>&1)
+    local check_status=$?
+    
+    if [ $check_status -eq 0 ]; then
         log_info "Moodle already installed. Skipping installation..."
-        return
+        return 0
+    elif [ $check_status -eq 2 ]; then
+        log_error "Database check failed: $check_result"
+        log_warn "Skipping installation due to database error. Container will continue running."
+        log_warn "You can exec into the container to debug: docker compose exec moodle bash"
+        SETUP_FAILED=true
+        return 1
     fi
     
     log_info "Installing Moodle..."
@@ -166,7 +222,7 @@ install_moodle() {
     fi
     
     # Run Moodle CLI installer
-    php /var/www/html/admin/cli/install.php \
+    if php /var/www/html/admin/cli/install.php \
         --non-interactive \
         --lang=en \
         --wwwroot="${WWWROOT}" \
@@ -181,9 +237,16 @@ install_moodle() {
         --adminuser="${MOODLE_ADMIN_USER}" \
         --adminpass="${MOODLE_ADMIN_PASSWORD}" \
         --adminemail="${MOODLE_ADMIN_EMAIL}" \
-        --agree-license
-    
-    log_info "Moodle installation complete!"
+        --agree-license; then
+        log_info "Moodle installation complete!"
+        return 0
+    else
+        log_error "Moodle installation failed!"
+        log_warn "Container will continue running. You can exec into it to debug."
+        log_warn "Run: docker compose exec moodle bash"
+        SETUP_FAILED=true
+        return 1
+    fi
 }
 
 # Ensure moodledata directory is properly set up
@@ -206,17 +269,72 @@ setup_moodledata() {
 # Main execution
 main() {
     log_info "Starting Moodle container..."
+    log_info "Container will stay running even if setup fails, for debugging purposes."
     
+    # Handle signals gracefully
+    trap 'log_info "Received shutdown signal. Stopping php-fpm..."; kill -TERM $PHP_PID 2>/dev/null; exit 0' SIGTERM SIGINT SIGQUIT
+    
+    # Setup steps - each one handles its own errors
     setup_moodledata
     wait_for_mysql
     download_moodle
     configure_moodle
     install_moodle
     
-    log_info "Moodle is ready!"
+    if [ "$SETUP_FAILED" = "true" ]; then
+        log_warn "=========================================="
+        log_warn "SETUP COMPLETED WITH ERRORS!"
+        log_warn "=========================================="
+        log_warn "Some setup steps failed. Check the logs above."
+        log_warn ""
+        log_warn "The container will continue running so you can debug."
+        log_warn "You can exec into this container with:"
+        log_warn "  docker compose exec moodle bash"
+        log_warn ""
+        log_warn "From inside, you can:"
+        log_warn "  - Check database connection manually"
+        log_warn "  - Edit /var/www/html/config.php"
+        log_warn "  - Run Moodle CLI scripts"
+        log_warn ""
+        log_warn "Useful commands:"
+        log_warn "  - Test DB: php -r \"new mysqli('db', '\$MYSQL_USER', '\$MYSQL_PASSWORD', '\$MYSQL_DATABASE');\""
+        log_warn "  - Check config: cat /var/www/html/config.php"
+        log_warn "=========================================="
+    else
+        log_info "=========================================="
+        log_info "Moodle setup complete!"
+        log_info "=========================================="
+    fi
     
-    # Execute the main command (php-fpm)
-    exec "$@"
+    log_info "Starting php-fpm..."
+    
+    # Start php-fpm in foreground mode
+    # Use exec to replace shell process if no errors, otherwise run in background
+    # so we can keep the container alive
+    if [ "$SETUP_FAILED" = "true" ]; then
+        # Run php-fpm in background and wait
+        php-fpm -F &
+        PHP_PID=$!
+        log_info "php-fpm started with PID $PHP_PID"
+        log_info "Container is running. You can exec into it to debug issues."
+        
+        # Wait for php-fpm to exit (or signals)
+        wait $PHP_PID
+        exit_code=$?
+        log_info "php-fpm exited with code $exit_code"
+        
+        # If php-fpm dies, keep container running
+        log_warn "php-fpm stopped. Keeping container alive for debugging..."
+        log_warn "Run: docker compose exec moodle bash"
+        
+        # Sleep indefinitely to keep container running
+        while true; do
+            sleep 3600
+        done
+    else
+        # Normal case: exec replaces this process with php-fpm
+        exec "$@"
+    fi
 }
 
 main "$@"
