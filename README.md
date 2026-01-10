@@ -1,16 +1,17 @@
 # Moodle Docker Setup
 
-A complete Docker-based installation of Moodle with Nginx, PHP-FPM, and MySQL. SSL is managed by the host server's nginx with Certbot.
+A complete Docker-based installation of Moodle with Nginx, PHP-FPM, and MySQL. SSL is managed by the host server's nginx with Certbot. Supports both fresh installations and restoration from existing Moodle backups.
 
 ## Features
 
-- 🎓 **Moodle LMS** - Support for versions 4.0, 4.1, 4.2, 4.3, 4.4, 4.5, and 5.0+
+- 🎓 **Moodle LMS** - Support for versions 3.9, 3.10, 3.11, 4.0, 4.1, 4.2, 4.3, 4.4, 4.5, and 5.0+
 - 🌐 **Nginx** - Internal container nginx proxied by host nginx
-- 🐘 **PHP-FPM** - PHP 8.1 with all required Moodle extensions
-- 🗄️ **MySQL 8.0** - Database with optimized settings (port exposed for debugging)
+- 🐘 **PHP-FPM** - PHP 7.4 (for Moodle 3.x) or PHP 8.1 (for Moodle 4.x+)
+- 🗄️ **MySQL** - 5.7 (for Moodle 3.x) or 8.0 (for Moodle 4.x+)
 - 🔒 **SSL via Host Nginx** - Automatic HTTPS with Certbot on host server
 - ⏰ **Cron** - Automated scheduled tasks
 - 🐳 **Docker Compose** - Easy orchestration
+- 📦 **Backup Restoration** - Easy restoration from existing Moodle backups
 
 ## Architecture
 
@@ -43,8 +44,14 @@ nano .env
 Edit `.env` and set at minimum:
 
 ```env
-# Moodle version (4, 4.1, 4.2, 4.3, 4.4, 4.5, 5.0)
-MOODLE_VERSION=4.5
+# Moodle version (3.11 for legacy, 4.5 for latest)
+MOODLE_VERSION=3.11
+
+# PHP version (7.4 for Moodle 3.x, 8.1 for Moodle 4.x+)
+PHP_VERSION=7.4
+
+# MySQL version (5.7.33 for Moodle 3.x, 8.0 for Moodle 4.x+)
+MYSQL_VERSION=5.7.33
 
 # Your domain (must point to this server)
 DOMAIN=moodle.yourdomain.com
@@ -61,6 +68,9 @@ MYSQL_PASSWORD=your_secure_moodle_password
 
 # Moodle admin password (min 8 chars, upper, lower, number, special char)
 MOODLE_ADMIN_PASSWORD=YourSecure123!
+
+# Set to 'true' if restoring from backup
+RESTORE_MODE=true
 ```
 
 ### 3. Make Scripts Executable
@@ -126,7 +136,10 @@ docker compose logs -f moodle
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MOODLE_VERSION` | Moodle version to install | `4.5` |
+| `MOODLE_VERSION` | Moodle version to install | `3.11` |
+| `PHP_VERSION` | PHP version | `7.4` |
+| `MYSQL_VERSION` | MySQL version | `5.7.33` |
+| `RESTORE_MODE` | Use backup restoration mode | `false` |
 | `DOMAIN` | Your domain name | (required) |
 | `CERTBOT_EMAIL` | Email for Let's Encrypt | (required) |
 | `MOODLE_PORT` | Port to expose Moodle | `8080` |
@@ -149,15 +162,161 @@ docker compose logs -f moodle
 
 ### Supported Moodle Versions
 
-| Version | Branch |
-|---------|--------|
-| 5.0 | MOODLE_500_STABLE |
-| 4.5 | MOODLE_405_STABLE |
-| 4.4 | MOODLE_404_STABLE |
-| 4.3 | MOODLE_403_STABLE |
-| 4.2 | MOODLE_402_STABLE |
-| 4.1 | MOODLE_401_STABLE |
-| 4.0 | MOODLE_400_STABLE |
+| Version | Branch | PHP | MySQL |
+|---------|--------|-----|-------|
+| 5.0 | MOODLE_500_STABLE | 8.1+ | 8.0 |
+| 4.5 | MOODLE_405_STABLE | 8.1+ | 8.0 |
+| 4.4 | MOODLE_404_STABLE | 8.1+ | 8.0 |
+| 4.3 | MOODLE_403_STABLE | 8.1+ | 8.0 |
+| 4.2 | MOODLE_402_STABLE | 8.1+ | 8.0 |
+| 4.1 | MOODLE_401_STABLE | 8.0+ | 8.0 |
+| 4.0 | MOODLE_400_STABLE | 8.0+ | 8.0 |
+| 3.11 | MOODLE_311_STABLE | 7.4 | 5.7 |
+| 3.10 | MOODLE_310_STABLE | 7.4 | 5.7 |
+| 3.9 | MOODLE_39_STABLE | 7.4 | 5.7 |
+
+## Restoring from Backup
+
+This section explains how to restore Moodle from an existing backup, which is useful for migrating an existing Moodle installation to Docker.
+
+### Prerequisites
+
+You need three backup components:
+1. **Moodle code folder** - Your Moodle installation files (the PHP code)
+2. **Moodledata folder** - Your Moodle data files (can be large, e.g., 61GB)
+3. **Database SQL file** - An SQL dump of your Moodle database
+
+### Step 1: Prepare the Backup Directories
+
+The repository includes three backup directories:
+
+```
+backup/
+├── moodle/       # Place your Moodle code files here
+├── moodledata/   # Place your moodledata files here
+└── database/     # Place your SQL dump file here
+```
+
+### Step 2: Copy Your Backup Files
+
+```bash
+# Copy Moodle code (adjust paths to your backup location)
+cp -r /path/to/your/moodle/* backup/moodle/
+
+# Copy moodledata (this may take a while for large directories)
+cp -r /path/to/your/moodledata/* backup/moodledata/
+
+# Copy database dump
+cp /path/to/your/database_backup.sql backup/database/
+```
+
+**Important Notes:**
+- The SQL file in `backup/database/` will be automatically imported on first MySQL container startup
+- If you have multiple SQL files, only the first one (alphabetically) will be imported
+- For large databases, the import may take several minutes
+
+### Step 3: Configure Environment
+
+Edit your `.env` file with the following settings for Moodle 3.11.5:
+
+```env
+# Moodle 3.11.5 compatible settings
+MOODLE_VERSION=3.11
+PHP_VERSION=7.4
+MYSQL_VERSION=5.7.33
+
+# Enable restore mode
+RESTORE_MODE=true
+
+# Use the same database credentials as your original installation
+# or update config.php after startup
+MYSQL_DATABASE=moodle
+MYSQL_USER=moodleuser
+MYSQL_PASSWORD=your_moodle_password
+MYSQL_ROOT_PASSWORD=your_root_password
+
+# Your new domain
+DOMAIN=your-new-domain.com
+```
+
+### Step 4: Update config.php
+
+Before starting, update the `config.php` file in your `backup/moodle/` directory:
+
+```php
+<?php
+// Update these values to match your Docker setup
+
+$CFG->dbhost    = 'db';              // Docker MySQL container name
+$CFG->dbname    = 'moodle';          // Must match MYSQL_DATABASE in .env
+$CFG->dbuser    = 'moodleuser';      // Must match MYSQL_USER in .env
+$CFG->dbpass    = 'your_password';   // Must match MYSQL_PASSWORD in .env
+
+// Update the site URL
+$CFG->wwwroot   = 'https://your-new-domain.com';  // Your new domain
+
+// Keep these paths as-is for Docker
+$CFG->dataroot  = '/var/www/moodledata';
+```
+
+### Step 5: Start the Containers
+
+```bash
+# Make scripts executable
+chmod +x scripts/*.sh docker/php/scripts/*.sh
+
+# Run setup script
+./scripts/setup.sh
+```
+
+Or manually:
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+### Step 6: Post-Restoration Steps
+
+After the containers are running:
+
+```bash
+# Check container logs
+docker compose logs -f moodle
+
+# Clear Moodle caches
+docker compose exec moodle php /var/www/html/admin/cli/purge_caches.php
+
+# Fix permissions if needed
+docker compose exec moodle chown -R moodle:moodle /var/www/html /var/www/moodledata
+
+# If you need to run any database upgrades
+docker compose exec moodle php /var/www/html/admin/cli/upgrade.php
+```
+
+### Troubleshooting Restoration
+
+**Database Import Issues:**
+```bash
+# Check if database was imported
+docker compose exec db mysql -u root -p -e "SHOW TABLES FROM moodle;"
+
+# Manually import if needed
+docker compose exec -T db mysql -u root -p moodle < backup/database/your_backup.sql
+```
+
+**Permission Issues:**
+```bash
+# Fix moodledata permissions
+docker compose exec moodle chmod -R 777 /var/www/moodledata
+```
+
+**Config Issues:**
+```bash
+# Access container to edit config
+docker compose exec moodle bash
+nano /var/www/html/config.php
+```
 
 ## Local Development (No SSL)
 
@@ -225,8 +384,14 @@ docker compose exec db mysqldump -u root -p moodle > backup.sql
 
 ### Moodle Data Backup
 
+Since the project uses bind mounts, you can directly back up the directories:
+
 ```bash
-docker run --rm -v moodle-docker-prod_moodledata:/data -v $(pwd):/backup alpine tar czf /backup/moodledata.tar.gz -C /data .
+# Backup moodledata
+tar czf moodledata_backup.tar.gz -C backup/moodledata .
+
+# Backup moodle code
+tar czf moodle_backup.tar.gz -C backup/moodle .
 ```
 
 ## Directory Structure
@@ -235,16 +400,20 @@ docker run --rm -v moodle-docker-prod_moodledata:/data -v $(pwd):/backup alpine 
 .
 ├── .env.example           # Example environment variables
 ├── docker-compose.yml     # Docker Compose configuration
+├── backup/                # Backup directories for restoration
+│   ├── moodle/           # Place Moodle code files here
+│   ├── moodledata/       # Place moodledata files here (can be 61GB+)
+│   └── database/         # Place SQL dump file here
 ├── config/
 │   ├── mysql/
-│   │   └── my.cnf        # MySQL configuration
+│   │   └── my.cnf        # MySQL configuration (5.7 compatible)
 │   └── nginx/
 │       ├── nginx.conf    # Main Nginx configuration
 │       └── conf.d/
 │           └── default.conf  # Internal nginx config
 ├── docker/
 │   └── php/
-│       ├── Dockerfile    # PHP-FPM image with Moodle
+│       ├── Dockerfile    # PHP-FPM image (supports PHP 7.4 and 8.1)
 │       ├── config/
 │       │   └── config.php.template  # Moodle config template
 │       └── scripts/
