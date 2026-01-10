@@ -21,7 +21,17 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Backup files
+# Backup directories - ignore contents but keep structure
+backup/moodle/*
+backup/moodledata/*
+backup/database/*
+
+# Keep the .gitkeep files to preserve directory structure
+!backup/moodle/.gitkeep
+!backup/moodledata/.gitkeep
+!backup/database/.gitkeep
+
+# Backup files in root
 *.sql
 *.tar.gz
 *.bak

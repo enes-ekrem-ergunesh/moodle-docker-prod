@@ -1,7 +1,7 @@
 services:
   # MySQL Database
   db:
-    image: mysql:8.0
+    image: mysql:${MYSQL_VERSION:-5.7.33}
     container_name: moodle_db
     restart: unless-stopped
     ports:
@@ -14,6 +14,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./config/mysql/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./backup/database:/docker-entrypoint-initdb.d:ro
     networks:
       - moodle_network
     healthcheck:
@@ -28,7 +29,8 @@ services:
     build:
       context: ./docker/php
       args:
-        MOODLE_VERSION: ${MOODLE_VERSION:-4.5}
+        PHP_VERSION: ${PHP_VERSION:-7.4}
+        MOODLE_VERSION: ${MOODLE_VERSION:-3.11}
         PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
         PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE:-256M}
         PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-256M}
@@ -49,9 +51,10 @@ services:
       MOODLE_SITE_FULLNAME: ${MOODLE_SITE_FULLNAME:-My Moodle Site}
       MOODLE_SITE_SHORTNAME: ${MOODLE_SITE_SHORTNAME:-Moodle}
       TIMEZONE: ${TIMEZONE:-UTC}
+      RESTORE_MODE: ${RESTORE_MODE:-false}
     volumes:
-      - moodle_data:/var/www/html
-      - moodledata:/var/www/moodledata
+      - ./backup/moodle:/var/www/html
+      - ./backup/moodledata:/var/www/moodledata
     networks:
       - moodle_network
     depends_on:
@@ -66,7 +69,7 @@ services:
     ports:
       - "${MOODLE_PORT:-8080}:80"
     volumes:
-      - moodle_data:/var/www/html:ro
+      - ./backup/moodle:/var/www/html:ro
       - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
     networks:
@@ -79,7 +82,8 @@ services:
     build:
       context: ./docker/php
       args:
-        MOODLE_VERSION: ${MOODLE_VERSION:-4.5}
+        PHP_VERSION: ${PHP_VERSION:-7.4}
+        MOODLE_VERSION: ${MOODLE_VERSION:-3.11}
         PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
         PHP_UPLOAD_MAX_FILESIZE: ${PHP_UPLOAD_MAX_FILESIZE:-256M}
         PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-256M}
@@ -97,8 +101,8 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TIMEZONE: ${TIMEZONE:-UTC}
     volumes:
-      - moodle_data:/var/www/html
-      - moodledata:/var/www/moodledata
+      - ./backup/moodle:/var/www/html
+      - ./backup/moodledata:/var/www/moodledata
     networks:
       - moodle_network
     depends_on:
@@ -107,8 +111,6 @@ services:
 
 volumes:
   mysql_data:
-  moodle_data:
-  moodledata:
 
 networks:
   moodle_network:

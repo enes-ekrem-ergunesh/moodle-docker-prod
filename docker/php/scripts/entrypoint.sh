@@ -91,9 +91,18 @@ get_moodle_branch() {
         4|4.0)
             echo "MOODLE_400_STABLE"
             ;;
+        3.11|3.11.*)
+            echo "MOODLE_311_STABLE"
+            ;;
+        3.10|3.10.*)
+            echo "MOODLE_310_STABLE"
+            ;;
+        3.9|3.9.*)
+            echo "MOODLE_39_STABLE"
+            ;;
         *)
-            # Default to latest stable
-            echo "MOODLE_405_STABLE"
+            # Default to 3.11 stable for restore mode
+            echo "MOODLE_311_STABLE"
             ;;
     esac
 }
@@ -278,6 +287,17 @@ setup_moodledata() {
     log_info "moodledata directory ready!"
 }
 
+# Setup permissions for restored moodle directory
+setup_moodle_permissions() {
+    log_info "Setting up Moodle directory permissions..."
+    
+    if [ -d /var/www/html ]; then
+        chown -R moodle:moodle /var/www/html
+        chmod -R 755 /var/www/html
+        log_info "Moodle directory permissions set!"
+    fi
+}
+
 # Main execution
 main() {
     log_info "Starting Moodle container..."
@@ -286,36 +306,65 @@ main() {
     # Handle signals gracefully
     trap 'log_info "Received shutdown signal. Stopping php-fpm..."; kill -TERM $PHP_PID 2>/dev/null; exit 0' SIGTERM SIGINT SIGQUIT
     
-    # Setup steps - each one handles its own errors
-    setup_moodledata
-    wait_for_mysql
-    download_moodle
-    configure_moodle
-    install_moodle
-    
-    if [ "$SETUP_FAILED" = "true" ]; then
-        log_warn "=========================================="
-        log_warn "SETUP COMPLETED WITH ERRORS!"
-        log_warn "=========================================="
-        log_warn "Some setup steps failed. Check the logs above."
-        log_warn ""
-        log_warn "The container will continue running so you can debug."
-        log_warn "You can exec into this container with:"
-        log_warn "  docker compose exec moodle bash"
-        log_warn ""
-        log_warn "From inside, you can:"
-        log_warn "  - Check database connection manually"
-        log_warn "  - Edit /var/www/html/config.php"
-        log_warn "  - Run Moodle CLI scripts"
-        log_warn ""
-        log_warn "Useful commands:"
-        log_warn "  - Test DB: php -r \"new mysqli('db', '\$MYSQL_USER', '\$MYSQL_PASSWORD', '\$MYSQL_DATABASE');\""
-        log_warn "  - Check config: cat /var/www/html/config.php"
-        log_warn "=========================================="
+    # Check for restore mode
+    if [ "${RESTORE_MODE}" = "true" ]; then
+        log_info "=========================================="
+        log_info "RESTORE MODE ENABLED"
+        log_info "=========================================="
+        log_info "Using existing Moodle files from backup."
+        log_info "Skipping Moodle download and installation."
+        log_info ""
+        
+        # Setup steps for restore mode
+        setup_moodledata
+        setup_moodle_permissions
+        wait_for_mysql
+        
+        # Only configure Moodle if config.php doesn't exist
+        if [ ! -f /var/www/html/config.php ]; then
+            log_warn "No config.php found! You may need to copy your existing config.php"
+            log_warn "or edit the generated one after startup."
+            configure_moodle
+        else
+            log_info "Using existing config.php from backup."
+            log_info "Make sure database credentials in config.php match your .env settings!"
+        fi
+        
+        log_info "=========================================="
+        log_info "Moodle restore setup complete!"
+        log_info "=========================================="
     else
-        log_info "=========================================="
-        log_info "Moodle setup complete!"
-        log_info "=========================================="
+        # Normal fresh installation mode
+        setup_moodledata
+        wait_for_mysql
+        download_moodle
+        configure_moodle
+        install_moodle
+        
+        if [ "$SETUP_FAILED" = "true" ]; then
+            log_warn "=========================================="
+            log_warn "SETUP COMPLETED WITH ERRORS!"
+            log_warn "=========================================="
+            log_warn "Some setup steps failed. Check the logs above."
+            log_warn ""
+            log_warn "The container will continue running so you can debug."
+            log_warn "You can exec into this container with:"
+            log_warn "  docker compose exec moodle bash"
+            log_warn ""
+            log_warn "From inside, you can:"
+            log_warn "  - Check database connection manually"
+            log_warn "  - Edit /var/www/html/config.php"
+            log_warn "  - Run Moodle CLI scripts"
+            log_warn ""
+            log_warn "Useful commands:"
+            log_warn "  - Test DB: php -r \"new mysqli('db', '\$MYSQL_USER', '\$MYSQL_PASSWORD', '\$MYSQL_DATABASE');\""
+            log_warn "  - Check config: cat /var/www/html/config.php"
+            log_warn "=========================================="
+        else
+            log_info "=========================================="
+            log_info "Moodle setup complete!"
+            log_info "=========================================="
+        fi
     fi
     
     log_info "Starting php-fpm..."
