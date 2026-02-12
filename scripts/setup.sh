@@ -132,8 +132,9 @@ if [ "$RESTORE_MODE" = "true" ]; then
     log_info "  3. Run: docker compose exec moodle php /var/www/html/admin/cli/purge_caches.php"
     log_info ""
 else
-    log_info "NEXT STEP: Set up host nginx with SSL by running:"
-    log_info "  sudo ./scripts/setup-host-nginx.sh"
+    log_info "NEXT STEP: Set up host nginx in this exact order:"
+    log_info "  1) sudo ./scripts/01-setup-nginx-ssl.sh"
+    log_info "  2) sudo ./scripts/02-configure-nginx-proxy.sh"
 fi
 echo ""
 log_info "Note: Initial setup may take several minutes as Moodle downloads and installs."

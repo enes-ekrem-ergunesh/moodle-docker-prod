@@ -92,6 +92,9 @@ docker compose build
 docker compose up -d
 ```
 
+> ⚠️ **Important:** Starting Docker containers is **not enough** for domain access.  
+> You must run the host nginx scripts in order (Step 5.1 then Step 5.2).
+
 ### 5. Set Up Host Nginx with SSL (Two-Step Process)
 
 #### Step 1: Create Nginx Server Block and SSL Certificate
@@ -119,6 +122,10 @@ sudo ./scripts/02-configure-nginx-proxy.sh
 
 This updates the nginx configuration to proxy requests to your Moodle Docker container.
 
+It also sets forwarding headers to avoid common issues such as:
+- `400 Bad Request` from missing/incorrect host forwarding
+- HTTPS redirect loops behind Cloudflare or other proxies
+
 ### 6. Access Moodle
 
 Wait a few minutes for the initial Moodle installation to complete, then access:
@@ -129,6 +136,26 @@ Check installation progress with:
 ```bash
 docker compose logs -f moodle
 ```
+
+### 7. Final Verification Checklist (Do Not Skip)
+
+Run these checks in order:
+
+```bash
+# 1) Containers are healthy
+docker compose ps
+
+# 2) Internal nginx config is valid
+docker compose exec nginx nginx -t
+
+# 3) Host nginx config is valid
+sudo nginx -t
+
+# 4) Host reverse proxy points to your configured MOODLE_PORT
+curl -I -H "Host: your-domain.com" http://127.0.0.1:${MOODLE_PORT:-8080}/
+```
+
+Expected behavior for the curl check is a Moodle response (often `303 See Other` to your HTTPS domain).
 
 ## Configuration Options
 
@@ -427,6 +454,51 @@ tar czf moodle_backup.tar.gz -C backup/moodle .
 
 ## Troubleshooting
 
+### I forgot to run host nginx scripts
+
+This is the most common cause of deployment issues.
+
+Run these commands in order:
+
+```bash
+sudo ./scripts/01-setup-nginx-ssl.sh
+sudo ./scripts/02-configure-nginx-proxy.sh
+```
+
+Then reload/restart services if needed:
+
+```bash
+sudo systemctl reload nginx
+docker compose up -d --force-recreate nginx
+```
+
+### 400 Bad Request from nginx
+
+Usually caused by reverse-proxy header/host mismatch.
+
+Checklist:
+1. Verify host nginx proxy is active (Step 1 + Step 2 both completed).
+2. Confirm your site DNS points to this server.
+3. Validate configs:
+   - `sudo nginx -t`
+   - `docker compose exec nginx nginx -t`
+
+Inspect logs:
+
+```bash
+sudo tail -n 100 /var/log/nginx/error.log
+docker compose logs --tail=200 nginx
+```
+
+### HTTPS redirect loop (too many redirects)
+
+If using Cloudflare, set SSL mode to **Full (strict)** (not Flexible).
+
+Ensure host nginx forwards canonical HTTPS headers to Docker upstream (handled by Step 2 script):
+- `Host` = your domain
+- `X-Forwarded-Proto` = `https`
+- `X-Forwarded-Port` = `443`
+
 ### Container won't start
 
 Check logs:
@@ -451,7 +523,7 @@ mysql -h 127.0.0.1 -P 3306 -u moodleuser -p
 
 1. Ensure your domain points to your server
 2. Ensure ports 80 and 443 are open
-3. Re-run nginx setup:
+3. Re-run nginx setup in order:
    ```bash
    sudo ./scripts/01-setup-nginx-ssl.sh
    sudo ./scripts/02-configure-nginx-proxy.sh

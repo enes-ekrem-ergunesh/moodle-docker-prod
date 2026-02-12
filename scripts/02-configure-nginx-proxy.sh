@@ -62,12 +62,14 @@ LOCATION_BLOCK="        # Moodle reverse proxy configuration
         location / {
                 proxy_pass http://127.0.0.1:$MOODLE_PORT;
                 proxy_http_version 1.1;
-                proxy_set_header Host \\\$host;
+        # Use canonical host/proto to avoid redirect loops
+        proxy_set_header Host $DOMAIN;
                 proxy_set_header X-Real-IP \\\$remote_addr;
                 proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto \\\$scheme;
-                proxy_set_header X-Forwarded-Host \\\$host;
-                proxy_set_header X-Forwarded-Port \\\$server_port;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $DOMAIN;
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_set_header X-Forwarded-Ssl on;
 
                 # Timeouts
                 proxy_connect_timeout 300;
@@ -80,6 +82,7 @@ LOCATION_BLOCK="        # Moodle reverse proxy configuration
                 proxy_buffer_size 128k;
                 proxy_buffers 256 16k;
                 proxy_busy_buffers_size 256k;
+                proxy_redirect off;
         }"
 
 # Use sed to replace the location block
@@ -120,6 +123,13 @@ with open('$NGINX_CONFIG', 'w') as f:
 
 print("Configuration updated successfully")
 EOF
+
+if ! grep -q "proxy_pass http://127.0.0.1:$MOODLE_PORT;" "$NGINX_CONFIG"; then
+    echo "Error: Could not find expected proxy_pass after update."
+    echo "Restoring backup..."
+    cp "$BACKUP_FILE" "$NGINX_CONFIG"
+    exit 1
+fi
 
 # Test nginx config
 echo "Testing nginx configuration..."
