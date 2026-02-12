@@ -104,6 +104,7 @@ RUN { \
     echo "pm.max_spare_servers = 100"; \
     echo "pm.max_requests = 5000"; \
     echo "request_terminate_timeout = 3600"; \
+    echo "slowlog = /proc/self/fd/2"; \
     echo "request_slowlog_timeout = 1800"; \
     } > /usr/local/etc/php-fpm.d/zz-moodle.conf
 
