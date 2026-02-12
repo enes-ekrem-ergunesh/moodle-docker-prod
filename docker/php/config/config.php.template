@@ -28,7 +28,9 @@ $CFG->directorypermissions = 02777;
 
 // Session handling
 $CFG->session_handler_class = '\core\session\database';
-$CFG->session_database_acquire_lock_timeout = 120;
+$CFG->session_database_acquire_lock_timeout = 3600;
+$CFG->session_lifetime = 86400;
+$CFG->sessioncookie_maxlifetime = 86400;
 
 // Reverse proxy settings (important for Docker/nginx setup)
 $CFG->reverseproxy = true;

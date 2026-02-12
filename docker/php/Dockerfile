@@ -80,27 +80,31 @@ RUN { \
     echo "post_max_size = ${PHP_POST_MAX_SIZE}"; \
     echo "max_execution_time = ${PHP_MAX_EXECUTION_TIME}"; \
     echo "max_input_time = ${PHP_MAX_EXECUTION_TIME}"; \
-    echo "max_input_vars = 5000"; \
+    echo "max_input_vars = 50000"; \
     echo "date.timezone = ${TIMEZONE}"; \
+    echo "default_socket_timeout = 3600"; \
     echo "opcache.enable = 1"; \
-    echo "opcache.memory_consumption = 128"; \
-    echo "opcache.max_accelerated_files = 10000"; \
-    echo "opcache.revalidate_freq = 60"; \
+    echo "opcache.memory_consumption = 256"; \
+    echo "opcache.max_accelerated_files = 50000"; \
+    echo "opcache.revalidate_freq = 0"; \
     echo "opcache.use_cwd = 1"; \
-    echo "opcache.validate_timestamps = 1"; \
+    echo "opcache.validate_timestamps = 0"; \
     echo "opcache.save_comments = 1"; \
     echo "opcache.enable_file_override = 0"; \
+    echo "opcache.fast_shutdown = 1"; \
     } > /usr/local/etc/php/conf.d/moodle.ini
 
 # Configure PHP-FPM
 RUN { \
     echo "[www]"; \
     echo "pm = dynamic"; \
-    echo "pm.max_children = 50"; \
-    echo "pm.start_servers = 5"; \
-    echo "pm.min_spare_servers = 5"; \
-    echo "pm.max_spare_servers = 35"; \
-    echo "pm.max_requests = 500"; \
+    echo "pm.max_children = 200"; \
+    echo "pm.start_servers = 20"; \
+    echo "pm.min_spare_servers = 10"; \
+    echo "pm.max_spare_servers = 100"; \
+    echo "pm.max_requests = 5000"; \
+    echo "request_terminate_timeout = 3600"; \
+    echo "request_slowlog_timeout = 1800"; \
     } > /usr/local/etc/php-fpm.d/zz-moodle.conf
 
 # Create moodle user and directories
