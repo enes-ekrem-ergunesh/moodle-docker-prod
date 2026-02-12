@@ -303,6 +303,44 @@ docker compose build
 docker compose up -d
 ```
 
+### Step 5.1 (Recommended for very large SQL backups)
+
+If your `database_backup.sql` is very large and import takes a long time, start only the database first.
+This avoids repeated connection/error logs from `moodle` and `cron` while MySQL is still restoring.
+
+```bash
+# Start only database
+docker compose up -d db
+
+# Follow database restore/import logs until complete
+docker compose logs -f db
+```
+
+How to tell restore is complete:
+- You no longer see active SQL import output in `docker compose logs -f db`
+- `docker compose ps` shows `db` as healthy
+- Table count stops changing between checks
+
+```bash
+# Quick table-count check (run a few times)
+docker compose exec db mysql -u root -p -Nse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='moodle';"
+```
+
+Optional heuristic for very large restores:
+- Run `docker system df -v` twice (with a short delay) and verify the MySQL volume is no longer growing rapidly.
+
+When import is finished and database is healthy, start the remaining services:
+
+```bash
+docker compose up -d moodle nginx cron
+```
+
+Optional full bring-up after DB is ready:
+
+```bash
+docker compose up -d
+```
+
 ### Step 6: Post-Restoration Steps
 
 After the containers are running:
@@ -331,6 +369,12 @@ docker compose exec db mysql -u root -p -e "SHOW TABLES FROM moodle;"
 # Manually import if needed
 docker compose exec -T db mysql -u root -p moodle < backup/database/your_backup.sql
 ```
+
+For very large SQL files, prefer staged startup:
+1. `docker compose up -d db`
+2. Wait until restore finishes in `docker compose logs -f db`
+3. Confirm `db` is healthy and table count is stable
+4. `docker compose up -d moodle nginx cron`
 
 **Permission Issues:**
 ```bash
