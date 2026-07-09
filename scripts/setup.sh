@@ -52,6 +52,17 @@ source .env
 
 log_step "Validating configuration..."
 
+is_true_or_false() {
+    case "${1:-}" in
+        true|false|TRUE|FALSE|1|0|yes|no|on|off|YES|NO|ON|OFF)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # Validate Moodle version
 MOODLE_MAJOR_VERSION=$(echo $MOODLE_VERSION | cut -d. -f1)
 if [ "$MOODLE_MAJOR_VERSION" -lt 4 ]; then
@@ -65,12 +76,19 @@ if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "moodle.example.com" ]; then
     exit 1
 fi
 
+# Validate restore mode flag
+if ! is_true_or_false "${RESTORE_FROM_BACKUP:-false}"; then
+    log_error "RESTORE_FROM_BACKUP must be true/false (or 1/0, yes/no)"
+    exit 1
+fi
+
 log_info "Configuration validated!"
 log_info "  Moodle Version: $MOODLE_VERSION"
 log_info "  Domain: $DOMAIN"
 log_info "  Moodle Port: ${MOODLE_PORT:-8080}"
 log_info "  MySQL Port: ${MYSQL_PORT:-3306}"
 log_info "  SSL Enabled: ${ENABLE_SSL:-true}"
+log_info "  Restore From Backup: ${RESTORE_FROM_BACKUP:-false}"
 
 echo ""
 log_step "Building Docker images..."

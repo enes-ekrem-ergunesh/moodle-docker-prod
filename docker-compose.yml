@@ -11,9 +11,12 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      RESTORE_FROM_BACKUP: ${RESTORE_FROM_BACKUP:-false}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./config/mysql/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./docker/mysql/initdb:/docker-entrypoint-initdb.d:ro
+      - ./backup:/backup:ro
     networks:
       - moodle_network
     healthcheck:
@@ -39,6 +42,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
       ENABLE_SSL: ${ENABLE_SSL:-true}
+      RESTORE_FROM_BACKUP: ${RESTORE_FROM_BACKUP:-false}
       MYSQL_HOST: db
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -52,6 +56,7 @@ services:
     volumes:
       - moodle_data:/var/www/html
       - moodledata:/var/www/moodledata
+      - ./backup:/backup:ro
     networks:
       - moodle_network
     depends_on:

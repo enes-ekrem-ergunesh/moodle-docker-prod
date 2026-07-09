@@ -19,6 +19,17 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+is_true() {
+    case "${1:-}" in
+        true|TRUE|1|yes|YES|on|ON)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # Flag to track if setup completed successfully
 SETUP_FAILED=false
 
@@ -103,6 +114,23 @@ download_moodle() {
     if [ -f /var/www/html/version.php ]; then
         log_info "Moodle already downloaded. Skipping..."
         return 0
+    fi
+
+    if is_true "${RESTORE_FROM_BACKUP:-false}"; then
+        if [ -f /backup/moodle/version.php ]; then
+            log_info "RESTORE_FROM_BACKUP=true. Restoring Moodle code from /backup/moodle..."
+
+            # Copy preserving file metadata and nested directories.
+            tar -C /backup/moodle -cf - . | tar -C /var/www/html -xf -
+            chown -R moodle:moodle /var/www/html
+            chmod -R 755 /var/www/html
+
+            log_info "Moodle code restored from backup."
+            return 0
+        fi
+
+        log_warn "RESTORE_FROM_BACKUP=true but /backup/moodle/version.php is missing."
+        log_warn "Falling back to downloading Moodle source."
     fi
     
     local branch=$(get_moodle_branch "${MOODLE_VERSION}")
@@ -223,6 +251,14 @@ install_moodle() {
         SETUP_FAILED=true
         return 1
     fi
+
+    if is_true "${RESTORE_FROM_BACKUP:-false}"; then
+        log_error "RESTORE_FROM_BACKUP=true but Moodle tables were not found in database."
+        log_warn "Expected a DB dump in ./backup (e.g., mysql.sql or db.sql) for first startup."
+        log_warn "Skipping fresh installation because backup mode is enabled."
+        SETUP_FAILED=true
+        return 1
+    fi
     
     log_info "Installing Moodle..."
     
@@ -264,6 +300,16 @@ install_moodle() {
 # Ensure moodledata directory is properly set up
 setup_moodledata() {
     log_info "Setting up moodledata directory..."
+
+    if is_true "${RESTORE_FROM_BACKUP:-false}"; then
+        if [ -d /backup/moodledata ] && [ "$(find /backup/moodledata -mindepth 1 -print -quit 2>/dev/null)" ]; then
+            log_info "RESTORE_FROM_BACKUP=true. Restoring moodledata from /backup/moodledata..."
+            tar -C /backup/moodledata -cf - . | tar -C /var/www/moodledata -xf -
+        else
+            log_warn "RESTORE_FROM_BACKUP=true but /backup/moodledata is empty or missing."
+            log_warn "Continuing with empty moodledata directories."
+        fi
+    fi
     
     mkdir -p /var/www/moodledata
     mkdir -p /var/www/moodledata/temp
@@ -282,6 +328,7 @@ setup_moodledata() {
 main() {
     log_info "Starting Moodle container..."
     log_info "Container will stay running even if setup fails, for debugging purposes."
+    log_info "Restore from backup mode: ${RESTORE_FROM_BACKUP:-false}"
     
     # Handle signals gracefully
     trap 'log_info "Received shutdown signal. Stopping php-fpm..."; kill -TERM $PHP_PID 2>/dev/null; exit 0' SIGTERM SIGINT SIGQUIT

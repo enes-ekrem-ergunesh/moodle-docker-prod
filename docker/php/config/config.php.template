@@ -30,8 +30,8 @@ $CFG->directorypermissions = 02777;
 $CFG->session_handler_class = '\core\session\database';
 $CFG->session_database_acquire_lock_timeout = 120;
 
-// Reverse proxy settings (important for Docker/nginx setup)
-$CFG->reverseproxy = true;
+// Reverse proxy settings (SSL terminated by host nginx)
+$CFG->reverseproxy = false;
 $CFG->sslproxy = %%SSLPROXY%%;
 
 // Performance settings

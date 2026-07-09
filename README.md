@@ -61,6 +61,9 @@ MYSQL_PASSWORD=your_secure_moodle_password
 
 # Moodle admin password (min 8 chars, upper, lower, number, special char)
 MOODLE_ADMIN_PASSWORD=YourSecure123!
+
+# Install mode: false = fresh install, true = restore from ./backup
+RESTORE_FROM_BACKUP=false
 ```
 
 ### 3. Make Scripts Executable
@@ -127,6 +130,7 @@ docker compose logs -f moodle
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MOODLE_VERSION` | Moodle version to install | `4.5` |
+| `RESTORE_FROM_BACKUP` | Restore from files in `./backup` (`true`/`false`) | `false` |
 | `DOMAIN` | Your domain name | (required) |
 | `CERTBOT_EMAIL` | Email for Let's Encrypt | (required) |
 | `MOODLE_PORT` | Port to expose Moodle | `8080` |
@@ -216,6 +220,21 @@ mysql -h 127.0.0.1 -P 3306 -u moodleuser -p
    ```
 
 ## Backup
+
+## Restore From Backup
+
+To restore instead of running a fresh Moodle install:
+
+1. Set `RESTORE_FROM_BACKUP=true` in `.env`
+2. Place backup assets under `./backup`:
+   - Moodle code: `./backup/moodle` (must contain `version.php`)
+   - Moodle data: `./backup/moodledata`
+   - Database dump: `./backup/mysql.sql` (or `db.sql`, `backup.sql`, or any `*.sql` in `./backup`)
+3. Start the stack with `./scripts/setup.sh`
+
+Behavior notes:
+- `RESTORE_FROM_BACKUP=false` installs Moodle as a new site using CLI installer.
+- `RESTORE_FROM_BACKUP=true` skips fresh install and expects DB tables from the SQL backup.
 
 ### Database Backup
 
