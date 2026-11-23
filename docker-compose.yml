@@ -5,7 +5,7 @@ services:
     container_name: ncc_ems_dev_moodle_db
     restart: unless-stopped
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "${MYSQL_BIND:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -55,6 +55,8 @@ services:
       TIMEZONE: ${TIMEZONE:-UTC}
     volumes:
       - moodle_data:/var/www/html
+      # local_ems plugin comes from its own git repo (bind-mounted over the copy in the volume)
+      - ${EMS_PLUGIN_DIR:-../ncc-ems-rebuild-moodle-local-plugin}:/var/www/html/local/ems
       - moodledata:/var/www/moodledata
       - ./backup:/backup:ro
     networks:
@@ -69,7 +71,7 @@ services:
     container_name: ncc_ems_dev_moodle_nginx
     restart: unless-stopped
     ports:
-      - "${MOODLE_PORT:-8080}:80"
+      - "${MOODLE_BIND:-127.0.0.1}:${MOODLE_PORT:-8080}:80"
     volumes:
       - moodle_data:/var/www/html:ro
       - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -103,6 +105,8 @@ services:
       TIMEZONE: ${TIMEZONE:-UTC}
     volumes:
       - moodle_data:/var/www/html
+      # local_ems plugin comes from its own git repo (bind-mounted over the copy in the volume)
+      - ${EMS_PLUGIN_DIR:-../ncc-ems-rebuild-moodle-local-plugin}:/var/www/html/local/ems
       - moodledata:/var/www/moodledata
     networks:
       - moodle_network
