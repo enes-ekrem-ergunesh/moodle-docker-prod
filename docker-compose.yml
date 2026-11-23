@@ -110,6 +110,58 @@ services:
       db:
         condition: service_healthy
 
+  # One-shot backup: docker compose run --rm backup
+  # Writes ./backup/moodle-backup-<timestamp>.tar.gz and exits.
+  backup:
+    image: mysql:8.0
+    container_name: ncc_ems_dev_moodle_backup
+    profiles: ["tools"]
+    restart: "no"
+    entrypoint: ["bash", "/scripts/backup.sh"]
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: ${TIMEZONE:-UTC}
+    volumes:
+      - ./docker/backup/backup.sh:/scripts/backup.sh:ro
+      - moodle_data:/source/moodle:ro
+      - moodledata:/source/moodledata:ro
+      - ./backup:/backup
+    networks:
+      - moodle_network
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # One-shot restore: docker compose run --rm restore
+  # Reads ./restore and OVERWRITES database, Moodle code and moodledata.
+  # Stop moodle/cron/nginx first (scripts/restore.sh does this).
+  restore:
+    image: mysql:8.0
+    container_name: ncc_ems_dev_moodle_restore
+    profiles: ["tools"]
+    restart: "no"
+    entrypoint: ["bash", "/scripts/restore.sh"]
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      RESTORE_FILE: ${RESTORE_FILE:-}
+      RESTORE_KEEP_CONFIG: ${RESTORE_KEEP_CONFIG:-false}
+      TZ: ${TIMEZONE:-UTC}
+    volumes:
+      - ./docker/backup/restore.sh:/scripts/restore.sh:ro
+      - ./restore:/restore:ro
+      - moodle_data:/target/moodle
+      - moodledata:/target/moodledata
+    networks:
+      - moodle_network
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   mysql_data:
   moodle_data:

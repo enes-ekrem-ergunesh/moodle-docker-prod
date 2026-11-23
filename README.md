@@ -130,7 +130,8 @@ docker compose logs -f moodle
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MOODLE_VERSION` | Moodle version to install | `4.5` |
-| `RESTORE_FROM_BACKUP` | Restore from files in `./backup` (`true`/`false`) | `false` |
+| `RESTORE_FROM_BACKUP` | First-time install from files in `./backup` (`true`/`false`) | `false` |
+| `RESTORE_KEEP_CONFIG` | Keep current `config.php` when running `scripts/restore.sh` | `false` |
 | `DOMAIN` | Your domain name | (required) |
 | `CERTBOT_EMAIL` | Email for Let's Encrypt | (required) |
 | `MOODLE_PORT` | Port to expose Moodle | `8080` |
@@ -219,34 +220,78 @@ mysql -h 127.0.0.1 -P 3306 -u moodleuser -p
    docker compose exec moodle php /var/www/html/admin/cli/upgrade.php
    ```
 
-## Backup
+## Backup & Restore
 
-## Restore From Backup
+Two one-shot containers (both use the `mysql:8.0` image, under the `tools` profile so `docker compose up` never starts them). Each runs, does its job, and exits.
 
-To restore instead of running a fresh Moodle install:
+### Take a backup
+
+```bash
+./scripts/backup.sh
+```
+
+or directly:
+
+```bash
+docker compose run --rm backup
+```
+
+This writes `./backup/moodle-backup-<YYYYmmdd-HHMMSS>.tar.gz` containing:
+
+| Path | Contents |
+|------|----------|
+| `mysql.sql` | Full dump of `MYSQL_DATABASE` (`--single-transaction`, site stays online) |
+| `moodle/` | Moodle code including `config.php` |
+| `moodledata/` | Uploaded files (skips `cache`, `localcache`, `temp`, `sessions`, `trashdir`) |
+| `manifest.txt` | Timestamp, Moodle release, MySQL version |
+
+Use `./scripts/backup.sh --maintenance` to put Moodle in maintenance mode while the backup runs, so files and database match exactly.
+
+### Restore a backup
+
+> ⚠️ Restore **erases** the current database, Moodle code and moodledata and replaces them with the backup.
+
+1. Copy a backup archive into `./restore`:
+   ```bash
+   cp backup/moodle-backup-20261123-120000.tar.gz restore/
+   ```
+2. Run:
+   ```bash
+   ./scripts/restore.sh
+   ```
+   It asks you to type `restore` to confirm, stops `moodle`, `cron` and `nginx`, runs the restore container, then brings the stack back up.
+
+Options:
+- `./scripts/restore.sh moodle-backup-X.tar.gz` restores a specific archive (default: newest `*.tar.gz` in `./restore`).
+- `./scripts/restore.sh -y` skips the confirmation.
+- `RESTORE_KEEP_CONFIG=true ./scripts/restore.sh` keeps the current `config.php` instead of the one in the backup (use this when restoring a backup from another server with a different domain or DB password).
+- `./restore` can also hold an extracted backup (`mysql.sql`, `moodle/`, `moodledata/`) instead of an archive.
+
+The restore checks that the backup is complete (all three parts present, SQL dump not truncated) **before** deleting anything.
+
+To run the container yourself, stop the app first:
+
+```bash
+docker compose stop moodle cron nginx
+docker compose run --rm restore
+docker compose up -d
+```
+
+### First-time install from a backup (`RESTORE_FROM_BACKUP`)
+
+This is for bringing up a brand-new stack with empty volumes:
 
 1. Set `RESTORE_FROM_BACKUP=true` in `.env`
-2. Place backup assets under `./backup`:
+2. Place backup assets under `./backup` (an extracted backup archive has the right layout):
    - Moodle code: `./backup/moodle` (must contain `version.php`)
    - Moodle data: `./backup/moodledata`
    - Database dump: `./backup/mysql.sql` (or `db.sql`, `backup.sql`, or any `*.sql` in `./backup`)
 3. Start the stack with `./scripts/setup.sh`
 
 Behavior notes:
-- `RESTORE_FROM_BACKUP=false` installs Moodle as a new site using CLI installer.
+- `RESTORE_FROM_BACKUP=false` installs Moodle as a new site using the CLI installer.
 - `RESTORE_FROM_BACKUP=true` skips fresh install and expects DB tables from the SQL backup.
-
-### Database Backup
-
-```bash
-docker compose exec db mysqldump -u root -p moodle > backup.sql
-```
-
-### Moodle Data Backup
-
-```bash
-docker run --rm -v moodle-docker-prod_moodledata:/data -v $(pwd):/backup alpine tar czf /backup/moodledata.tar.gz -C /data .
-```
+- This only works on empty volumes. To restore over a running site, use `./scripts/restore.sh`.
 
 ## Directory Structure
 
@@ -261,7 +306,12 @@ docker run --rm -v moodle-docker-prod_moodledata:/data -v $(pwd):/backup alpine 
 │       ├── nginx.conf    # Main Nginx configuration
 │       └── conf.d/
 │           └── default.conf  # Internal nginx config
+├── backup/                # Backup archives are written here (git-ignored)
+├── restore/               # Put a backup here to restore it (git-ignored)
 ├── docker/
+│   ├── backup/
+│   │   ├── backup.sh     # Backup container script
+│   │   └── restore.sh    # Restore container script
 │   └── php/
 │       ├── Dockerfile    # PHP-FPM image with Moodle
 │       ├── config/
@@ -271,6 +321,8 @@ docker run --rm -v moodle-docker-prod_moodledata:/data -v $(pwd):/backup alpine 
 │           └── cron-entrypoint.sh  # Cron container entrypoint
 └── scripts/
     ├── setup.sh                    # Docker setup script
+    ├── backup.sh                   # Take a backup into ./backup
+    ├── restore.sh                  # Restore from ./restore
     ├── 01-setup-nginx-ssl.sh       # Step 1: Create nginx block + SSL
     └── 02-configure-nginx-proxy.sh # Step 2: Configure reverse proxy
 ```

@@ -25,3 +25,7 @@ Thumbs.db
 *.sql
 *.tar.gz
 *.bak
+
+# Backup / restore working folders
+/backup/
+/restore/
