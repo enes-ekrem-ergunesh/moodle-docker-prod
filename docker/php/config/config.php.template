@@ -46,10 +46,10 @@ $CFG->cronremotepassword = '';
 // Security
 $CFG->passwordpolicy = true;
 $CFG->minpasswordlength = 8;
-$CFG->minpassworddigits = 1;
-$CFG->minpasswordlower = 1;
-$CFG->minpasswordupper = 1;
-$CFG->minpasswordnonalphanum = 1;
+$CFG->minpassworddigits = 0;
+$CFG->minpasswordlower = 0;
+$CFG->minpasswordupper = 0;
+$CFG->minpasswordnonalphanum = 0;
 
 // Other settings
 $CFG->pathtogs = '/usr/bin/gs';

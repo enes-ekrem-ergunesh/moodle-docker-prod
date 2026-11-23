@@ -2,7 +2,7 @@ services:
   # MySQL Database
   db:
     image: mysql:8.0
-    container_name: moodle_db
+    container_name: ncc_ems_dev_moodle_db
     restart: unless-stopped
     ports:
       - "${MYSQL_PORT:-3306}:3306"
@@ -37,7 +37,7 @@ services:
         PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-256M}
         PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
         TIMEZONE: ${TIMEZONE:-UTC}
-    container_name: moodle_app
+    container_name: ncc_ems_dev_moodle_app
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN}
@@ -66,7 +66,7 @@ services:
   # Nginx Web Server (internal, exposed to host nginx via port)
   nginx:
     image: nginx:alpine
-    container_name: moodle_nginx
+    container_name: ncc_ems_dev_moodle_nginx
     restart: unless-stopped
     ports:
       - "${MOODLE_PORT:-8080}:80"
@@ -90,7 +90,7 @@ services:
         PHP_POST_MAX_SIZE: ${PHP_POST_MAX_SIZE:-256M}
         PHP_MAX_EXECUTION_TIME: ${PHP_MAX_EXECUTION_TIME:-300}
         TIMEZONE: ${TIMEZONE:-UTC}
-    container_name: moodle_cron
+    container_name: ncc_ems_dev_moodle_cron
     restart: unless-stopped
     entrypoint: /usr/local/bin/cron-entrypoint.sh
     environment:
